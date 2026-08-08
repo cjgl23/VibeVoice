@@ -850,7 +850,7 @@ Or paste text directly and it will auto-assign speakers.""",
                     label="Streaming Audio (Real-time)",
                     type="numpy",
                     elem_classes="audio-output",
-                    streaming=True,  # Enable streaming mode
+                    streaming=False,  # Disabled: requires ffmpeg/ffprobe, unavailable on this machine
                     autoplay=True,
                     show_download_button=False,  # Explicitly show download button
                     visible=True
