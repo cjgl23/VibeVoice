@@ -29,8 +29,25 @@ from vibevoice.modular.streamer import AudioStreamer
 from transformers.utils import logging
 from transformers import set_seed
 
+from prepare_chatgpt_script import clean_and_validate
+
 logging.set_verbosity_info()
 logger = logging.get_logger(__name__)
+
+
+def load_chatgpt_prompt_template() -> str:
+    """Extract the copyable prompt block from chatgpt_script_prompt.md (the
+    text between the first two '---' separators)."""
+    prompt_path = os.path.join(os.path.dirname(__file__), "chatgpt_script_prompt.md")
+    try:
+        with open(prompt_path, "r", encoding="utf-8") as f:
+            content = f.read()
+        parts = content.split("---")
+        if len(parts) >= 3:
+            return parts[1].strip()
+    except Exception as e:
+        print(f"Warning: could not load {prompt_path}: {e}")
+    return ""
 
 
 class VibeVoiceDemo:
@@ -780,7 +797,34 @@ def create_demo_interface(demo_instance: VibeVoiceDemo):
             # Right column - Generation
             with gr.Column(scale=2, elem_classes="generation-card"):
                 gr.Markdown("### 📝 **Script Input**")
-                
+
+                with gr.Accordion("🤖 ChatGPT Script Assistant", open=False):
+                    gr.Markdown(
+                        "Copy the prompt below into the ChatGPT web UI (chatgpt.com) — pick "
+                        "whichever model and thinking level you like, this doesn't call any "
+                        "API. Fill in the `[bracketed]` fields, send it, then paste the reply "
+                        "back below and click **Clean & Insert**."
+                    )
+                    chatgpt_prompt_box = gr.Textbox(
+                        value=load_chatgpt_prompt_template(),
+                        label="Prompt to paste into ChatGPT",
+                        lines=10,
+                        max_lines=20,
+                        interactive=False,
+                        show_copy_button=True,
+                    )
+                    chatgpt_raw_input = gr.Textbox(
+                        label="Paste ChatGPT's reply here",
+                        placeholder="Speaker 1: ...\nSpeaker 2: ...",
+                        lines=8,
+                        max_lines=20,
+                    )
+                    clean_script_btn = gr.Button(
+                        "🧹 Clean & Insert into Script",
+                        variant="secondary",
+                    )
+                    chatgpt_status = gr.Markdown(visible=False)
+
                 script_input = gr.Textbox(
                     label="Conversation Script",
                     placeholder="""Enter your podcast script here. You can format it as:
@@ -891,6 +935,37 @@ Or paste text directly and it will auto-assign speakers.""",
             fn=update_speaker_visibility,
             inputs=[num_speakers],
             outputs=speaker_selections
+        )
+
+        def clean_chatgpt_script_handler(raw_text, expected_speakers):
+            """Clean/validate text pasted from the ChatGPT UI and insert it into the script box."""
+            if not raw_text or not raw_text.strip():
+                return (
+                    gr.update(),
+                    gr.update(),
+                    gr.update(value="⚠️ Paste ChatGPT's reply into the box above first.", visible=True),
+                )
+
+            cleaned_text, messages = clean_and_validate(raw_text, expected_speakers=int(expected_speakers))
+
+            icon = {"info": "✅", "warning": "⚠️", "error": "❌"}
+            status_md = "\n\n".join(f"{icon.get(level, 'ℹ️')} {text}" for level, text in messages)
+
+            if not cleaned_text:
+                return gr.update(), gr.update(), gr.update(value=status_md, visible=True)
+
+            detected_speakers = len(set(re.findall(r"^Speaker\s+(\d+):", cleaned_text, re.MULTILINE | re.IGNORECASE)))
+            num_speakers_update = (
+                gr.update(value=detected_speakers) if 1 <= detected_speakers <= 4 else gr.update()
+            )
+
+            return gr.update(value=cleaned_text), num_speakers_update, gr.update(value=status_md, visible=True)
+
+        clean_script_btn.click(
+            fn=clean_chatgpt_script_handler,
+            inputs=[chatgpt_raw_input, num_speakers],
+            outputs=[script_input, num_speakers, chatgpt_status],
+            queue=False,
         )
         
         # Main generation function with streaming
