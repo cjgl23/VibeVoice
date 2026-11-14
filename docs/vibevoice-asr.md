@@ -38,7 +38,7 @@ We recommend to use NVIDIA Deep Learning Container to manage the CUDA environmen
 ```bash
 # NVIDIA PyTorch Container 24.07 ~ 25.12 verified. 
 # Previous versions are also compatible.
-sudo docker run --privileged --net=host --ipc=host --ulimit memlock=-1:-1 --ulimit stack=-1:-1 --gpus all --rm -it  nvcr.io/nvidia/pytorch:25.12-py3
+sudo docker run --shm-size=8g --ulimit memlock=-1:-1 --ulimit stack=-1:-1 --gpus all --rm -it nvcr.io/nvidia/pytorch:25.12-py3
 
 ## If flash attention is not included in your docker environment, you need to install it manually
 ## Refer to https://github.com/Dao-AILab/flash-attention for installation instructions
@@ -58,8 +58,18 @@ pip install -e .[asr]
 ```bash
 apt update && apt install ffmpeg -y # for demo
 
-python demo/vibevoice_asr_gradio_demo.py --model_path microsoft/VibeVoice-ASR --share
+python demo/vibevoice_asr_gradio_demo.py --model_path microsoft/VibeVoice-ASR
+
+# Local-only, optional: allow reading host audio files by path
+# python demo/vibevoice_asr_gradio_demo.py --model_path microsoft/VibeVoice-ASR --allow-local-paths
 ```
+
+The Gradio demo now binds to `127.0.0.1` by default. If you intentionally
+expose it through `--share` or a non-loopback `--host`, **server-side audio
+file paths remain disabled**; callers must upload their audio. Do not expose
+an unauthenticated demo to an untrusted network. The old Docker invocation's
+`--privileged`, `--net=host`, and `--ipc=host` options were removed to avoid
+unnecessary host privileges.
 
 ### Usage 2: Inference from files directly
 ```bash

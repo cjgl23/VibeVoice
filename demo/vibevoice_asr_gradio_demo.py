@@ -412,6 +412,10 @@ asr_model = None
 # Global stop flag for generation
 stop_generation_flag = False
 
+# Filesystem-path input is dangerous on remotely accessible Gradio demos:
+# anonymous callers must never be able to select arbitrary files on the host.
+ALLOW_LOCAL_AUDIO_PATHS = False
+
 
 class StopOnFlag(StoppingCriteria):
     """Custom stopping criteria that checks a global flag."""
@@ -536,6 +540,9 @@ def transcribe_audio(
         sample_rate = None
 
         if audio_path_input:
+            if not ALLOW_LOCAL_AUDIO_PATHS:
+                yield "❌ Server-side audio paths are disabled. Upload a file instead.", ""
+                return
             candidate = Path(audio_path_input.strip())
             if not candidate.exists():
                 yield f"❌ Provided path does not exist: {candidate}", ""
@@ -1131,8 +1138,8 @@ def main():
     parser.add_argument(
         "--host",
         type=str,
-        default="0.0.0.0",
-        help="Host to bind the server to"
+        default="127.0.0.1",
+        help="Host to bind the server to (default: loopback only)"
     )
     parser.add_argument(
         "--port",
@@ -1146,8 +1153,18 @@ def main():
         help="Create a public link"
     )
     
+    parser.add_argument(
+        "--allow-local-paths",
+        action="store_true",
+        help="Allow host filesystem audio paths only when bound to loopback without --share"
+    )
     args = parser.parse_args()
-    
+
+    if args.allow_local_paths and (args.share or args.host not in ("127.0.0.1", "localhost", "::1")):
+        parser.error("--allow-local-paths is only allowed with a loopback --host and without --share")
+    global ALLOW_LOCAL_AUDIO_PATHS
+    ALLOW_LOCAL_AUDIO_PATHS = args.allow_local_paths
+
     # Create and launch interface
     demo, custom_css = create_gradio_interface(
         model_path=args.model_path,
